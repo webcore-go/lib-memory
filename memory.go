@@ -2,6 +2,7 @@ package redis
 
 import (
 	"fmt"
+	"reflect"
 	"strconv"
 	"time"
 
@@ -62,21 +63,47 @@ func (r *MemoryCache) Set(key string, value any, ttl time.Duration) error {
 	var val string
 	var ok bool
 
+	// Handle pointer types by dereferencing
+	rv := reflect.ValueOf(value)
+	if rv.Kind() == reflect.Ptr {
+		if rv.IsNil() {
+			return fmt.Errorf("Cannot set nil pointer value for key %s", key)
+		}
+		value = rv.Elem().Interface()
+	}
+
 	switch v := value.(type) {
 	case string:
 		val = v
 	case int:
+		val = strconv.FormatInt(int64(v), 10)
+	case int8:
+		val = strconv.FormatInt(int64(v), 10)
 	case int16:
+		val = strconv.FormatInt(int64(v), 10)
+	case int32:
+		val = strconv.FormatInt(int64(v), 10)
 	case int64:
-		val = strconv.FormatInt(int64(v), 64)
+		val = strconv.FormatInt(v, 10)
+	case uint:
+		val = strconv.FormatUint(uint64(v), 10)
+	case uint8:
+		val = strconv.FormatUint(uint64(v), 10)
+	case uint16:
+		val = strconv.FormatUint(uint64(v), 10)
+	case uint32:
+		val = strconv.FormatUint(uint64(v), 10)
+	case uint64:
+		val = strconv.FormatUint(v, 10)
 	case bool:
 		val = "0"
 		if v {
 			val = "1"
 		}
 	case float32:
+		val = strconv.FormatFloat(float64(v), 'f', -1, 32)
 	case float64:
-		val = strconv.FormatFloat(float64(v), 'f', -1, 64)
+		val = strconv.FormatFloat(v, 'f', -1, 64)
 	default:
 		m, err := helper.JSONMarshal(value)
 		if err != nil {
@@ -93,9 +120,44 @@ func (r *MemoryCache) Set(key string, value any, ttl time.Duration) error {
 	return nil
 }
 
-func (r *MemoryCache) Get(key string) (any, bool) {
+func (r *MemoryCache) Get(key string, outvalue any) bool {
 	val, ok := r.Cache.GetIfPresent(key)
-	var val2 any
-	val2 = val
-	return val2, ok
+	if !ok {
+		return false
+	}
+
+	// Use reflection to properly set the outvalue
+	rv := reflect.ValueOf(outvalue)
+	if rv.Kind() != reflect.Ptr || rv.IsNil() {
+		return false
+	}
+
+	elem := rv.Elem()
+
+	switch elem.Kind() {
+	case reflect.String:
+		elem.SetString(val)
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		i, err := strconv.ParseInt(val, 10, 64)
+		if err == nil {
+			elem.SetInt(i)
+		}
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		i, err := strconv.ParseUint(val, 10, 64)
+		if err == nil {
+			elem.SetUint(i)
+		}
+	case reflect.Bool:
+		elem.SetBool(val == "1")
+	case reflect.Float32, reflect.Float64:
+		f, err := strconv.ParseFloat(val, 64)
+		if err == nil {
+			elem.SetFloat(f)
+		}
+	default:
+		// For complex types, use JSON unmarshal
+		helper.JSONUnmarshal([]byte(val), outvalue)
+	}
+
+	return ok
 }
