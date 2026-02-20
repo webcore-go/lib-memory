@@ -4,7 +4,7 @@ go 1.24.0
 
 require (
 	github.com/maypok86/otter/v2 v2.3.0
-	github.com/webcore-go/webcore v0.0.12
+	github.com/webcore-go/webcore v0.0.14
 )
 
 require (
